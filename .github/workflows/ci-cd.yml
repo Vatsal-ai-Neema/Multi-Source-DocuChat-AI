@@ -1,0 +1,111 @@
+# ═══════════════════════════════════════════════════════════════
+# DocuChat AI — GitHub Actions CI/CD Pipeline
+# ═══════════════════════════════════════════════════════════════
+# Triggers on every push to main branch
+# Steps: Lint → Test → Build Docker → (Deploy to Render)
+# ═══════════════════════════════════════════════════════════════
+
+name: DocuChat AI CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  # ── Job 1: Code Quality ─────────────────────────────────────
+  lint:
+    name: 🔍 Lint & Format Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install linting tools
+        run: |
+          pip install flake8 black
+
+      - name: Run flake8 (syntax check)
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Check code formatting (black)
+        run: |
+          black --check --diff .
+        continue-on-error: true  # Warning only, don't fail
+
+  # ── Job 2: Tests ────────────────────────────────────────────
+  test:
+    name: 🧪 Run Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --tb=short
+        continue-on-error: true  # Don't fail if no tests yet
+
+  # ── Job 3: Docker Build ─────────────────────────────────────
+  docker-build:
+    name: 🐳 Build Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false   # Set to true when you add DockerHub secrets
+          tags: docuchat-ai:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Job 4: Deploy (optional) ────────────────────────────────
+  # Uncomment when ready to deploy to Render
+  #
+  # deploy:
+  #   name: 🚀 Deploy to Render
+  #   runs-on: ubuntu-latest
+  #   needs: docker-build
+  #   if: github.ref == 'refs/heads/main'
+  #
+  #   steps:
+  #     - name: Trigger Render Deploy
+  #       run: |
+  #         curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"

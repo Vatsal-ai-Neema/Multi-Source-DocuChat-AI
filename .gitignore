@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+.pytest_cache/
+data/
+faiss_index/
+.env
+.streamlit/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.model_cache/
+*.pyc
+.env
+faiss_index/
