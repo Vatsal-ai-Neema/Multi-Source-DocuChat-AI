@@ -900,7 +900,14 @@ def extract_tables_from_pdf(file_path: str) -> List[dict]:
 # UPGRADE 07 — Contradiction Detection
 # ══════════════════════════════════════════════════════════════════════════════
 
-def detect_contradictions(chunks: list) -> dict:
+def detect_contradictions(
+    chunks_by_doc: dict,
+    topic: str = ""  # ← Add this line if missing
+) -> dict:
+    # Flatten all chunks from all documents
+    chunks = [chunk for doc_chunks in chunks_by_doc.values() for chunk in doc_chunks]
+    
+
     if not chunks:
         return {
             "contradictions": [],

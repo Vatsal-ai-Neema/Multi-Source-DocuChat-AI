@@ -1,4 +1,4 @@
-﻿"""
+"""
 Multi-Source DocuChat AI - Multi-Source RAG Application
 Version 2.0 - Integrated advanced retrieval and analysis features
 
@@ -14,6 +14,7 @@ import os
 import time
 import pandas as pd
 from dotenv import load_dotenv
+import json
 
 from utils.loader   import load_documents
 from utils.chunker  import split_into_chunks
@@ -671,32 +672,48 @@ with st.sidebar:
                         k_per_doc=4
                     )
                     result = detect_contradictions(
-                        chunks_by_doc,
-                        topic=topic_input
+                        chunks_by_doc
                     )
+                    if isinstance(result, str):
+                        try:
+                            result = json.loads(result)
+                        except Exception:
+                            result = {
+                                "summary": result,
+                                "contradictions": [],
+                                "agreements": [],
+                                "nli_available": False
+                            }
 
                     # Format result for chat
                     content = f"⚔ **Cross-Document Analysis:**\n\n{result['summary']}"
 
-                    if result["contradictions"]:
-                        content += "\n\n---\n**Top Contradictions Found:**"
-                        for c in result["contradictions"][:3]:
-                            content += (
-                                f"\n\n**{c['doc_a']}** says:\n> {c['text_a'][:150]}..."
-                                f"\n\n**{c['doc_b']}** says:\n> {c['text_b'][:150]}..."
-                                f"\n*(Confidence: {c['confidence']}%)*"
-                            )
-
-                    if result["agreements"]:
-                        content += "\n\n---\n**Points of Agreement:**"
-                        for a in result["agreements"][:2]:
-                            content += (
-                                f"\n\n Both **{a['doc_a']}** and **{a['doc_b']}** agree:\n"
-                                f"> {a['text_a'][:150]}..."
-                            )
-
-                    if not result["nli_available"]:
+                    if "nli_available" not in result:
+                         st.warning("⚠️ NLI model not available or not loaded properly")
+                    elif not result["nli_available"]:
+                        st.warning("⚠️ NLI disabled")
                         content += "\n\n*Install `sentence-transformers` for local NLI. Gemini analysis used as fallback.*"
+
+
+                    for c in result.get("contradictions", [])[:3]:
+                       if isinstance(c, dict):
+                           content += (
+                               f"\n\n**{c.get('doc_a','Doc A')}** says:\n> {c.get('text_a','')[:150]}..."
+                               f"\n\n**{c.get('doc_b','Doc B')}** says:\n> {c.get('text_b','')[:150]}..."
+                               f"\n*(Confidence: {c.get('confidence','?')}%)*"
+                            )
+                    else:
+                        content += f"\n\n- {c}"
+
+                    for a in result.get("agreements", [])[:2]:
+                        if isinstance(a, dict):
+                            content += (
+                                f"\n\n Both **{a.get('doc_a')}** and **{a.get('doc_b')}** agree:\n"
+                                f"> {a.get('text_a','')[:150]}..."
+                            )
+                    else:
+                        content += f"\n\n- {a}"
+
 
                     st.session_state.chat_history.append({
                         "role": "assistant",
