@@ -4,6 +4,7 @@ utils/llm.py
 LLM Integration Module — Google Gemini API
 Version 2.0 — 4 Upgrades Integrated
 
+
 Upgrades added:
   [04] HyDE   — Hypothetical Document Embedder (better retrieval)
   [05] Socratic — Smart follow-up question engine
