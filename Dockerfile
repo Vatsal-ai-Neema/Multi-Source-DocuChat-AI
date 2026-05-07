@@ -25,7 +25,7 @@ RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cro
 COPY . .
 RUN mkdir -p data faiss_index
 
-EXPOSE 8501
+EXPOSE 10000
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 
 CMD ["streamlit", "run", "app.py", \

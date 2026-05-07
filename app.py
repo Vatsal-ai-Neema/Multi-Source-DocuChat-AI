@@ -455,8 +455,8 @@ with st.sidebar:
     provider_default = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
     provider = st.selectbox(
         "Provider",
-        options=["gemini", "openrouter"],
-        index=0 if provider_default != "openrouter" else 1,
+        options=["gemini", "openrouter", "groq"],
+        index=0 if provider_default not in ["openrouter", "groq"] else (1 if provider_default == "openrouter" else 2),
         help="Choose which API to use for generation."
     )
     os.environ["LLM_PROVIDER"] = provider
@@ -486,6 +486,31 @@ with st.sidebar:
             st.success("✅ Default backend OpenRouter key is active.")
         else:
             st.caption("Add an OpenRouter key here, or set `OPENROUTER_API_KEY` in your `.env` file.")
+    elif provider == "groq":
+        default_api_key = os.getenv("GROQ_API_KEY", "").strip()
+        api_key = st.text_input(
+            "Optional: enter a different Groq API Key",
+            type="password",
+            placeholder="gsk_...",
+            help="Leave blank to use the backend key from `.env` (GROQ_API_KEY)."
+        )
+        model_name = st.text_input(
+            "Groq model (optional)",
+            value=os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
+            help="Example: llama-3.1-8b-instant"
+        ).strip()
+        if model_name:
+            os.environ["GROQ_MODEL"] = model_name
+
+        effective_api_key = api_key.strip() or default_api_key
+        if api_key:
+            os.environ["GROQ_API_KEY"] = api_key
+            st.success("✅ Custom Groq key set for this session.")
+        elif default_api_key:
+            st.success("✅ Default backend Groq key is active.")
+            st.caption("Groq works best here for text features like chat, summary, and keywords.")
+        else:
+            st.caption("Add a Groq key here, or set `GROQ_API_KEY` in your `.env` file.")
     else:
         default_api_key = os.getenv("GEMINI_API_KEY", "").strip()
         api_key = st.text_input(
@@ -575,6 +600,8 @@ with st.sidebar:
     elif uploaded_files and not effective_api_key:
         if provider == "openrouter":
             st.warning("⚠ Add an OpenRouter API key first, or configure `OPENROUTER_API_KEY` in `.env`.")
+        elif provider == "groq":
+            st.warning("⚠ Add a Groq API key first, or configure `GROQ_API_KEY` in `.env`.")
         else:
             st.warning("⚠ Add a Gemini API key first, or configure `GEMINI_API_KEY` in `.env`.")
 
@@ -672,7 +699,8 @@ with st.sidebar:
                         k_per_doc=4
                     )
                     result = detect_contradictions(
-                        chunks_by_doc
+                        chunks_by_doc,
+                        topic=topic_input.strip() if topic_input else ""
                     )
                     if isinstance(result, str):
                         try:
@@ -695,24 +723,24 @@ with st.sidebar:
                         content += "\n\n*Install `sentence-transformers` for local NLI. Gemini analysis used as fallback.*"
 
 
-                    for c in result.get("contradictions", [])[:3]:
-                       if isinstance(c, dict):
-                           content += (
-                               f"\n\n**{c.get('doc_a','Doc A')}** says:\n> {c.get('text_a','')[:150]}..."
-                               f"\n\n**{c.get('doc_b','Doc B')}** says:\n> {c.get('text_b','')[:150]}..."
-                               f"\n*(Confidence: {c.get('confidence','?')}%)*"
-                            )
-                    else:
-                        content += f"\n\n- {c}"
-
-                    for a in result.get("agreements", [])[:2]:
-                        if isinstance(a, dict):
+                    for contradiction in result.get("contradictions", [])[:3]:
+                        if isinstance(contradiction, dict):
                             content += (
-                                f"\n\n Both **{a.get('doc_a')}** and **{a.get('doc_b')}** agree:\n"
-                                f"> {a.get('text_a','')[:150]}..."
+                                f"\n\n**{contradiction.get('doc_a', 'Doc A')}** says:\n> {contradiction.get('text_a', '')[:150]}..."
+                                f"\n\n**{contradiction.get('doc_b', 'Doc B')}** says:\n> {contradiction.get('text_b', '')[:150]}..."
+                                f"\n*(Confidence: {contradiction.get('confidence', '?')}%)*"
                             )
-                    else:
-                        content += f"\n\n- {a}"
+                        else:
+                            content += f"\n\n- {contradiction}"
+
+                    for agreement in result.get("agreements", [])[:2]:
+                        if isinstance(agreement, dict):
+                            content += (
+                                f"\n\n Both **{agreement.get('doc_a')}** and **{agreement.get('doc_b')}** agree:\n"
+                                f"> {agreement.get('text_a', '')[:150]}..."
+                            )
+                        else:
+                            content += f"\n\n- {agreement}"
 
 
                     st.session_state.chat_history.append({

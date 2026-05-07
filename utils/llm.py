@@ -89,6 +89,8 @@ def _provider_display_name(provider: str) -> str:
     p = (provider or "").strip().lower()
     if p == "openrouter":
         return "OpenRouter"
+    if p == "groq":
+        return "Groq"
     return "Gemini"
 
 
@@ -117,6 +119,22 @@ def _get_model(temperature: float = TEMPERATURE):
             extra_headers["X-Title"] = app_name
 
         client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key, default_headers=extra_headers)
+        return _OpenRouterModel(client=client, temperature=temperature, model_name=model_name)
+
+    if provider == "groq":
+        if OpenAI is None:
+            raise ValueError(
+                "Groq provider selected but 'openai' package is not installed. "
+                "Run: pip install -r requirements.txt"
+            )
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "GROQ_API_KEY not set. Set it in .env or environment variables."
+            )
+
+        model_name = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+        client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=api_key)
         return _OpenRouterModel(client=client, temperature=temperature, model_name=model_name)
 
     # Default: Gemini
@@ -645,6 +663,11 @@ INSTRUCTIONS:
         provider = _current_provider()
         if provider == "openrouter":
             contents = [prompt, {"mime_type": mime_type, "data": image_bytes}]
+        elif provider == "groq":
+            return (
+                "⚠️ **Chart analysis is not enabled for Groq in this app right now.**\n\n"
+                "Use `Gemini` or `OpenRouter` for image/chart analysis, or switch Groq for text features only."
+            )
         else:
             contents = [prompt, types.Part.from_bytes(data=image_bytes, mime_type=mime_type)]
 
@@ -902,11 +925,27 @@ def extract_tables_from_pdf(file_path: str) -> List[dict]:
 
 def detect_contradictions(
     chunks_by_doc: dict,
-    topic: str = ""  # ← Add this line if missing
+    topic: str = ""
 ) -> dict:
+    topic = (topic or "").strip()
+
+    def _matches_topic(chunk_text: str, focus: str) -> bool:
+        if not focus:
+            return True
+        focus_terms = [term.lower() for term in re.findall(r"[A-Za-z0-9]+", focus) if term.strip()]
+        if not focus_terms:
+            return True
+        lowered = chunk_text.lower()
+        return any(term in lowered for term in focus_terms)
+
+    filtered_chunks_by_doc = {}
+    for doc_name, doc_chunks in chunks_by_doc.items():
+        filtered = [chunk for chunk in doc_chunks if _matches_topic(chunk, topic)]
+        filtered_chunks_by_doc[doc_name] = filtered if filtered else doc_chunks[:1]
+
     # Flatten all chunks from all documents
-    chunks = [chunk for doc_chunks in chunks_by_doc.values() for chunk in doc_chunks]
-    
+    chunks = [chunk for doc_chunks in filtered_chunks_by_doc.values() for chunk in doc_chunks]
+
 
     if not chunks:
         return {
@@ -917,6 +956,11 @@ def detect_contradictions(
 
     model = _get_model()
     combined_text = "\n\n".join(chunks)
+    topic_instruction = (
+        f'Focus ONLY on the topic "{topic}". Ignore contradictions and agreements unrelated to this topic.'
+        if topic else
+        "Analyze all topics present in the excerpts."
+    )
 
     prompt = f"""
 You are an expert analyst.
@@ -924,6 +968,9 @@ You are an expert analyst.
 Analyze the following document excerpts and identify:
 1. Any CONTRADICTIONS (conflicting statements)
 2. Any AGREEMENTS (consistent statements)
+
+TOPIC FOCUS:
+{topic_instruction}
 
 TEXT:
 {combined_text}
